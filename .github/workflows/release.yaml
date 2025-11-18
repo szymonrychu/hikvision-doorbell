@@ -1,0 +1,86 @@
+name: release
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  GIT_SHA: ${{ github.sha }}
+  CONTAINER_NAME: hikvision-doorbell
+  CHART_NAME: hikvision-doorbell
+  BOT_USER_NAME: szymonrichert.pl bot
+  BOT_USER_EMAIL: bot@szymonrichert.pl
+  CHARTS_REPO_URL: selfhosted-kubernetes-charts
+  CHARTS_REPO_OWNER: szymonrychu
+  CHARTS_REPO_KEY: ${{ secrets.CHARTS_REPO_KEY }}
+
+jobs:
+
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "${BOT_USER_NAME}"
+          git config --global user.email "${BOT_USER_EMAIL}"
+
+      - name: Login to GHCR
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: szymonrychu
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Parse versions in commit and setup debs for tag
+        id: prep
+        run: |
+          export LATEST_REPO_TAG=$(git tag -l --sort=-v:refname "[0-9]*" | head -n1)
+
+          export SHORT_SHA="$(echo ${GIT_SHA:0:7})"
+          export APP_VERSION="${LATEST_REPO_TAG}"
+          export CHART_VERSION="${LATEST_REPO_TAG}"
+          export CONTAINER_VERSION="${LATEST_REPO_TAG}"
+
+          echo "app_version=${APP_VERSION}" >> $GITHUB_OUTPUT
+          echo "chart_version=${CHART_VERSION}" >> $GITHUB_OUTPUT
+          echo "container_version=${CONTAINER_VERSION}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "latest_repo_tag=${LATEST_REPO_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Tag existing container for release
+        run: |
+          echo '${{ secrets.GL_REGISTRY_PASSWORD }}' | docker login -u ${{ secrets.GL_REGISTRY_USER }} --password-stdin https://registry.gitlab.com/
+          set -e
+          docker pull registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.short_sha }}
+          docker tag registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.short_sha }} registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.container_version }}
+          docker push registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.container_version }}
+
+          docker tag registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.short_sha }} registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:latest
+          docker push registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:latest
+
+      - name: Package and upload charts
+        run: |
+          set -e
+          helm package \
+            --dependency-update "./chart/${CHART_NAME}" \
+            --version ${{ steps.prep.outputs.chart_version }} \
+            --app-version ${{ steps.prep.outputs.app_version }} \
+            -u -d ./ "./chart/${CHART_NAME}"
+
+          curl --request POST \
+            --form "chart=@${CHART_NAME}-${{ steps.prep.outputs.chart_version }}.tgz" \
+            --user "${{ secrets.GL_REGISTRY_USER }}:${{ secrets.GL_REGISTRY_PASSWORD }}" \
+            https://gitlab.com/api/v4/projects/41596878/packages/helm/api/stable/charts
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.SZYMONRYCHU_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME"

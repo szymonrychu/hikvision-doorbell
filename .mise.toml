@@ -1,0 +1,9 @@
+[tools]
+python = "3.14"
+uv = "0.9.5"
+poetry = "2.0.0"
+
+[env]
+POETRY_INSTALLER_MAX_WORKERS = "4"
+POETRY_VIRTUALENVS_IN_PROJECT = "true"
+POETRY_VIRTUALENVS_PREFER_ACTIVE_PYTHON = "true"

@@ -1,0 +1,52 @@
+{
+  "dryRun": null,
+  "extends": ["config:recommended", ":rebaseStalePrs"],
+  "dependencyDashboard": false,
+  "rebaseWhen": "behind-base-branch",
+  "suppressNotifications": ["prIgnoreNotification"],
+  "gitAuthor": "szymonrichert.pl bot <bot@szymonrichert.pl>",
+  "platform": "github",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["(^|/)Chart\\.yaml$"],
+      "matchStrings": [
+        "#\\s?renovate: image=(?<depName>.*?)\\s?appVersion:\\s?\\\"?(?<currentValue>[\\w+\\.\\-]*)"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Update image in values.yaml",
+      "fileMatch": ["^values.yaml$"],
+      "matchStringsStrategy": "combination",
+      "matchStrings": [
+        "image:\\s*\"(?<depName>.*)\"\\s*//",
+        "tag:\\s*\"(?<currentValue>.*)\"\\s*//"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["helm-requirements", "helm-values", "regex"],
+      "postUpgradeTasks": {
+        "commands": [
+          ".github/bump_chart_version.sh charts/{{{parentDir}}}"
+        ],
+        "fileFilters": ["**/Chart.yaml"]
+      }
+    },
+    {
+      "description": "MinorAutoUpgrade",
+      "matchUpdateTypes": ["pin", "digest", "patch", "minor"],
+      "minimumReleaseAge": null,
+      "labels": ["automerge"]
+    },
+    {
+      "description": "MajorUpgrade",
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "7 days"
+    }
+  ]
+}

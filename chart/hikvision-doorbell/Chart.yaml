@@ -1,0 +1,7 @@
+apiVersion: v2
+name: hikvision-doorbell
+description: A Helm chart for Kubernetes
+type: application
+version: 0.0.0
+# renovate: image=ghcr.io/szymonrychu/hikvision-doorbell
+appVersion: 0.0.0

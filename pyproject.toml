@@ -1,0 +1,83 @@
+
+[tool.poetry]
+name = "hikvision-doorbell"
+version = "0.0.1"
+description = ""
+authors = ["Szymon Richert <szymon.rychu@gmail.com>"]
+readme = "README.md"
+packages = [
+  {include = "hikvision_doorbell"}
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.120.0"
+uvicorn = "^0.38.0"
+pydantic = "^2.12.3"
+pydantic-settings = "^2.11.0"
+jsonpatch = "^1.33"
+more-itertools = "^10.2.0"
+yarl = "^1.9.4"
+autoflake = "^2.3.1"
+httpx = "^0.28.1"
+aiomqtt = "^2.4.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+pytest-cov = "^7.0.0"
+ruff = "^0.4.4"
+coverage-badge = "^1.1.1"
+isort = "^7.0.0"
+vulture = "^2.11"
+poethepoet = "^0.37.0"
+pre-commit = "^4.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poe.tasks]
+app = "poetry run python -m hikvision_doorbell.main"
+test = 'poetry run coverage run -m pytest'
+sync = 'uv pip install --upgrade -r <(poetry export --dev)'
+
+[tool.pytest.ini_options]
+addopts = "-v -rxXs"
+testpaths = [
+    "tests",
+]
+log_cli = true
+log_cli_level = "INFO"
+
+[tool.autoflake]
+remove-all-unused-imports = true
+in-place = true
+expand-star-imports = true
+remove-unused-variables = true
+
+[tool.black]
+line-length = 120
+
+[tool.isort]
+profile = 'black'
+
+[tool.ruff]
+line-length = 120
+target-version = 'py311'
+fix = true
+
+[tool.flake8]
+max-line-length = 120
+
+[tool.vulture]
+exclude = ['venv', 'pod_v3', 'frontend-ops', 'labelbox', 'compute_v2']
+paths = ['hikvision_doorbell']
+min_confidence = 80
+ignore_names = ["visit_*", "do_*"]
+sort_by_size = true
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+skip_empty = true

@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hikvision-doorbell.fullname" . }}
+  labels:
+    {{- include "hikvision-doorbell.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "hikvision-doorbell.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "hikvision-doorbell.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "hikvision-doorbell.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: hikvision-doorbell
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: cache
+              mountPath: /cache
+            - name: varlogs
+              mountPath: /var/logs
+            - name: tmp
+              mountPath: /tmp
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz/live
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          env:
+            - name: DOOR_RELAY_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-config
+                  key: doorbell_relay_id
+            - name: HIK_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-config
+                  key: doorbell_host
+            - name: HIK_HTTPS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-config
+                  key: doorbell_https
+            - name: DEVICE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-config
+                  key: doorbell_device_name
+            - name: DEVICE_MANUFACTURER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-config
+                  key: doorbell_device_manufacturer
+            - name: DEVICE_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-config
+                  key: doorbell_device_model
+            - name: HIK_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-secrets
+                  key: doorbell_username
+            - name: HIK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-secrets
+                  key: doorbell_password
+            - name: MQTT_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-config
+                  key: mqtt_host
+            - name: MQTT_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-config
+                  key: mqtt_port
+            - name: MQTT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-secrets
+                  key: mqtt_username
+            - name: MQTT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-secrets
+                  key: mqtt_password
+            - name: MQTT_BASE_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-config
+                  key: mqtt_base_topic
+            - name: MQTT_DISCOVERY_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "hikvision-doorbell.fullname" . }}-config
+                  key: mqtt_discovery_prefix
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: temp
+          emptyDir: {}
+        - name: varlogs
+          emptyDir: {}

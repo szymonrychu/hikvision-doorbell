@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hikvision-doorbell.fullname" . }}-config
+  labels:
+    {{- include "hikvision-doorbell.labels" . | nindent 4 }}
+data:
+  doorbell_host: {{ .Values.doorbell.host | quote }}
+  doorbell_https: {{ .Values.doorbell.https | quote }}
+  doorbell_device_name: {{ .Values.doorbell.device.name | quote }}
+  doorbell_device_manufacturer: {{ .Values.doorbell.device.manufacturer | quote }}
+  doorbell_device_model: {{ .Values.doorbell.device.model | quote }}
+  doorbell_relay_id: {{ .Values.doorbell.relayId | quote }}
+  mqtt_host: {{ .Values.mqtt.host | quote }}
+  mqtt_port: {{ .Values.mqtt.port | quote }}
+  mqtt_base_topic: {{ .Values.mqtt.baseTopic | quote }}
+  mqtt_discovery_prefix: {{ .Values.mqtt.discoveryPrefix | quote }}
