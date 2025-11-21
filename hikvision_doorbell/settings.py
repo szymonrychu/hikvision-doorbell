@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     DEVICE_NAME: str = "doorbell"
     DEVICE_MANUFACTURER: str = "Hikvision"
     DEVICE_MODEL: str = "DS-KV6113-WPE1(C)"
+    DEVICE_SENSOR_NAME: str = "ring"
+    DEVICE_SENSOR_UID: str = "doorbell_state_sensor"
+    DEVICE_LOCK_NAME: str = "lock"
+    DEVICE_LOCK_UID: str = "doorbell_state_lock"
 
     # Door relay id
     DOOR_RELAY_ID: int = 1

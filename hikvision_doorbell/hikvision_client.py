@@ -4,7 +4,13 @@ import logging
 
 import httpx
 
-from hikvision_doorbell.models.mqtt import CallStateEvent, DoorbellEvent, MqttEvent
+from hikvision_doorbell.models.mqtt import (
+    CallStateEvent,
+    MqttEventDiscovery,
+    MqttEventDiscoveryEventTypes,
+    MqttLockDiscoveryState,
+    MqttMessageAvailabilityPayload,
+)
 from hikvision_doorbell.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -71,8 +77,8 @@ class HikvisionClient:
             logger.error(f"Couldn't get keys from '{resp.content}'")
         return CallStateEvent.error
 
-    async def ensure_door_state(self, open: bool, retry_count: int = 10) -> bool:
-        path = f"/ISAPI/AccessControl/RemoteControl/door/{(self.settings.DOOR_RELAY_ID,)}"
+    async def ensure_door_state(self, open: bool, retry_count: int = 10) -> MqttLockDiscoveryState:
+        path = f"/ISAPI/AccessControl/RemoteControl/door/{(self.settings.DOOR_RELAY_ID)}"
         headers = {"Content-Type": "application/xml", "Accept": "application/xml"}
         url = self._url(path)
         open_close = "open" if open else "close"
@@ -88,9 +94,10 @@ class HikvisionClient:
             resp = await self._client.put(url, content=xml_body.encode("utf‑8"), headers=headers)
             # Hitch: some devices return 204, some 200
             if resp.status_code in (200, 204):
-                return True
+                return MqttLockDiscoveryState.unlocked if open else MqttLockDiscoveryState.locked
+            logger.debug(f"{resp.content}")
             await asyncio.sleep(1)
-        return False
+        return MqttLockDiscoveryState.jammed
 
     async def refresh_client(self, stop_event: asyncio.Event):
         while not stop_event.is_set():
@@ -101,7 +108,9 @@ class HikvisionClient:
             )
             await asyncio.sleep(1)
 
-    async def stream_call_statuses(self, event_queue: asyncio.Queue, stop_event: asyncio.Event):
+    async def stream_call_statuses(
+        self, event_queue: asyncio.Queue, event_discovery: MqttEventDiscovery, stop_event: asyncio.Event
+    ):
         while not stop_event.is_set():
             if not self._client:
                 logger.debug("waiting for client")
@@ -109,92 +118,112 @@ class HikvisionClient:
                 continue
             try:
                 call_status = await self.get_call_status(self._client)
-                await event_queue.put(MqttEvent(event=call_status))
+                await event_queue.put(await event_discovery.get_mqtt_message(call_status))
             except httpx.ConnectError as e:
-                await event_queue.put(MqttEvent(event=CallStateEvent.error))
+                await event_queue.put(
+                    await event_discovery.get_mqtt_message(
+                        MqttEventDiscoveryEventTypes.unknown, MqttMessageAvailabilityPayload.payload_not_available
+                    )
+                )
                 logger.warning(f"Event stream connection error {str(e)}, reconnecting...")
                 await asyncio.sleep(1)
 
             except httpx.ConnectTimeout as e:
-                await event_queue.put(MqttEvent(event=CallStateEvent.error))
+                await event_queue.put(
+                    await event_discovery.get_mqtt_message(
+                        MqttEventDiscoveryEventTypes.unknown, MqttMessageAvailabilityPayload.payload_not_available
+                    )
+                )
                 logger.warning(f"Event stream connection timeout {str(e)}, reconnecting...")
                 await asyncio.sleep(1)
 
             except httpx.ReadError as e:
-                await event_queue.put(MqttEvent(event=CallStateEvent.error))
+                await event_queue.put(
+                    await event_discovery.get_mqtt_message(
+                        MqttEventDiscoveryEventTypes.unknown, MqttMessageAvailabilityPayload.payload_not_available
+                    )
+                )
                 logger.warning(f"Event stream read error {str(e)}, reconnecting...")
                 await asyncio.sleep(1)
 
             except httpx.ReadTimeout as e:
-                await event_queue.put(MqttEvent(event=CallStateEvent.error))
+                await event_queue.put(
+                    await event_discovery.get_mqtt_message(
+                        MqttEventDiscoveryEventTypes.unknown, MqttMessageAvailabilityPayload.payload_not_available
+                    )
+                )
                 logger.warning(f"Event stream read timeout {str(e)}, reconnecting...")
                 await asyncio.sleep(1)
 
             except Exception as e:
-                await event_queue.put(MqttEvent(event=CallStateEvent.error))
+                await event_queue.put(
+                    await event_discovery.get_mqtt_message(
+                        MqttEventDiscoveryEventTypes.unknown, MqttMessageAvailabilityPayload.payload_not_available
+                    )
+                )
                 logger.exception(f"Event stream crashed {str(e)}, retrying...")
                 await asyncio.sleep(1)
 
-    async def stream_events(self, event_queue: asyncio.Queue, stop_event: asyncio.Event):
-        alert_stream_url = self._url("/ISAPI/Event/notification/alertStream")
+    # async def stream_events(self, event_queue: asyncio.Queue, stop_event: asyncio.Event):
+    #     alert_stream_url = self._url("/ISAPI/Event/notification/alertStream")
 
-        headers = {"Accept": "application/xml"}
+    #     headers = {"Accept": "application/xml"}
 
-        while not stop_event.is_set():
-            if not self._client:
-                logger.debug("waiting for client")
-                await asyncio.sleep(0.1)
-                continue
-            try:
-                async with self._client.stream("GET", alert_stream_url, headers=headers) as resp:
-                    if resp.status_code != 200:
-                        logger.error(f"Event stream error {resp.status_code}")
-                        await event_queue.put(MqttEvent(event=CallStateEvent.error))
-                        await asyncio.sleep(1)
-                        continue
+    #     while not stop_event.is_set():
+    #         if not self._client:
+    #             logger.debug("waiting for client")
+    #             await asyncio.sleep(0.1)
+    #             continue
+    #         try:
+    #             async with self._client.stream("GET", alert_stream_url, headers=headers) as resp:
+    #                 if resp.status_code != 200:
+    #                     logger.error(f"Event stream error {resp.status_code}")
+    #                     await event_queue.put(MqttEvent(event=CallStateEvent.error))
+    #                     await asyncio.sleep(1)
+    #                     continue
 
-                    async for chunk in resp.aiter_text(chunk_size=1024):
-                        if stop_event.is_set():
-                            return
-                        self._raw_events_buffer += chunk
-                        while "</EventNotificationAlert>" in self._raw_events_buffer:
-                            logger.debug(f"processing events from buffer, len={len(self._raw_events_buffer)}")
-                            end = self._raw_events_buffer.index("</EventNotificationAlert>") + len(
-                                "</EventNotificationAlert>"
-                            )
-                            xml_block = self._raw_events_buffer[:end]
-                            self._raw_events_buffer = self._raw_events_buffer[end:]
-                            logger.debug(f"Received raw event: {xml_block}")
-                            ev = DoorbellEvent.from_xml_block(xml_block)
-                            if ev:
-                                logger.info(f"Received new event {ev.event_type}")
-                                await event_queue.put(ev.to_mqtt_event())
-                await asyncio.sleep(0.5)
+    #                 async for chunk in resp.aiter_text(chunk_size=1024):
+    #                     if stop_event.is_set():
+    #                         return
+    #                     self._raw_events_buffer += chunk
+    #                     while "</EventNotificationAlert>" in self._raw_events_buffer:
+    #                         logger.debug(f"processing events from buffer, len={len(self._raw_events_buffer)}")
+    #                         end = self._raw_events_buffer.index("</EventNotificationAlert>") + len(
+    #                             "</EventNotificationAlert>"
+    #                         )
+    #                         xml_block = self._raw_events_buffer[:end]
+    #                         self._raw_events_buffer = self._raw_events_buffer[end:]
+    #                         logger.debug(f"Received raw event: {xml_block}")
+    #                         ev = DoorbellEvent.from_xml_block(xml_block)
+    #                         if ev:
+    #                             logger.info(f"Received new event {ev.event_type}")
+    #                             await event_queue.put(ev)
+    #             await asyncio.sleep(0.5)
 
-            except httpx.ConnectError as e:
-                await event_queue.put(MqttEvent(event=CallStateEvent.error))
-                logger.warning(f"Event stream connection error {str(e)}, reconnecting...")
-                await asyncio.sleep(1)
+    #         except httpx.ConnectError as e:
+    #             await event_queue.put(MqttEvent(event=CallStateEvent.error))
+    #             logger.warning(f"Event stream connection error {str(e)}, reconnecting...")
+    #             await asyncio.sleep(1)
 
-            except httpx.ConnectTimeout as e:
-                await event_queue.put(MqttEvent(event=CallStateEvent.error))
-                logger.warning(f"Event stream connection timeout {str(e)}, reconnecting...")
-                await asyncio.sleep(1)
+    #         except httpx.ConnectTimeout as e:
+    #             await event_queue.put(MqttEvent(event=CallStateEvent.error))
+    #             logger.warning(f"Event stream connection timeout {str(e)}, reconnecting...")
+    #             await asyncio.sleep(1)
 
-            except httpx.ReadError as e:
-                await event_queue.put(MqttEvent(event=CallStateEvent.error))
-                logger.warning(f"Event stream read error {str(e)}, reconnecting...")
-                await asyncio.sleep(1)
+    #         except httpx.ReadError as e:
+    #             await event_queue.put(MqttEvent(event=CallStateEvent.error))
+    #             logger.warning(f"Event stream read error {str(e)}, reconnecting...")
+    #             await asyncio.sleep(1)
 
-            except httpx.ReadTimeout as e:
-                await event_queue.put(MqttEvent(event=CallStateEvent.error))
-                logger.warning(f"Event stream read timeout {str(e)}, reconnecting...")
-                await asyncio.sleep(1)
+    #         except httpx.ReadTimeout as e:
+    #             await event_queue.put(MqttEvent(event=CallStateEvent.error))
+    #             logger.warning(f"Event stream read timeout {str(e)}, reconnecting...")
+    #             await asyncio.sleep(1)
 
-            except Exception as e:
-                await event_queue.put(MqttEvent(event=CallStateEvent.error))
-                logger.exception(f"Event stream crashed {str(e)}, retrying...")
-                await asyncio.sleep(1)
+    #         except Exception as e:
+    #             await event_queue.put(MqttEvent(event=CallStateEvent.error))
+    #             logger.exception(f"Event stream crashed {str(e)}, retrying...")
+    #             await asyncio.sleep(1)
 
 
 client = HikvisionClient()
