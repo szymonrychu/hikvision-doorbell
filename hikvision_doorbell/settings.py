@@ -36,13 +36,15 @@ class Settings(BaseSettings):
     MQTT_DISCOVERY_PREFIX: str = "homeassistant"
 
     # Device metadata
-    DEVICE_NAME: str = "doorbell"
+    DEVICE_NAME: str = "Door Bell"
     DEVICE_MANUFACTURER: str = "Hikvision"
     DEVICE_MODEL: str = "DS-KV6113-WPE1(C)"
     DEVICE_SENSOR_NAME: str = "ring"
     DEVICE_SENSOR_UID: str = "doorbell_state_sensor"
     DEVICE_LOCK_NAME: str = "lock"
     DEVICE_LOCK_UID: str = "doorbell_state_lock"
+    DEVICE_UNLOCK_SLEEP_TIME_S: int = 10
+    DEVICE_AUTOLOCKING: bool = True
 
     # Door relay id
     DOOR_RELAY_ID: int = 1

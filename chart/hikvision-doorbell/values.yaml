@@ -9,7 +9,7 @@ doorbell:
   https: false
   relayId: 1
   device:
-    name: doorbell
+    name: Door Bell
     manufacturer: Hikvision
     model: DS-KV6113-WPE1(C)
 
