@@ -9,29 +9,32 @@ from hikvision_doorbell.workers.doorbell import doorbell
 logger = logging.getLogger("uvicorn")
 
 
-# Lifespan context manager replaces deprecated on_event
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # startup code
     logger.info("Starting Hikvision MQTT bridge...")
+
     stop_event = asyncio.Event()
+    app.state.stop_event = stop_event
 
     await doorbell.publish_discovery()
-    done, pending = await asyncio.wait(
-        doorbell.tasks(stop_event),
-        return_when=asyncio.FIRST_EXCEPTION,
-    )
-    try:
-        yield
-    finally:
-        # shutdown code
-        logger.info("Stopping Hikvision MQTT bridge...")
-        for t in pending:
-            t.cancel()
-            try:
-                await t
-            except asyncio.CancelledError:
-                logger.info("Bridge task cancelled successfully.")
+
+    tasks = []
+    for task in doorbell.tasks(stop_event):
+        tasks.append(task)
+    app.state.tasks = tasks
+
+    yield
+
+    logger.info("Stopping Hikvision MQTT bridge...")
+
+    stop_event.set()
+    for t in tasks:
+        t.cancel()
+    for t in tasks:
+        try:
+            await t
+        except asyncio.CancelledError:
+            logger.info("Background task cancelled.")
 
 
 app = FastAPI(title="Hikvision Doorbell MQTT Bridge", lifespan=lifespan)

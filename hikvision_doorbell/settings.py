@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     DEVICE_LOCK_UID: str = "doorbell_state_lock"
     DEVICE_UNLOCK_SLEEP_TIME_S: int = 10
     DEVICE_AUTOLOCKING: bool = True
+    DEVICE_CALL_RETRY_MAX_COUNT: int = 10
+    DEVICE_CALL_RETRY_DELAY: float = 0.5
 
     # Door relay id
     DOOR_RELAY_ID: int = 1

@@ -28,7 +28,7 @@ def retry_async_yield(
     def decorator(func: Callable[..., Any]):
         @wraps(func)
         async def wrapper(*args, **kwargs) -> AsyncGenerator[Any, None]:
-            last_exception = None
+            # last_exception = None
 
             for attempt in range(1, attempts + 1):
                 try:
@@ -38,8 +38,9 @@ def retry_async_yield(
                         yield result
                         return  # stop
 
-                except exceptions as exc:
-                    last_exception = exc
+                except exceptions:
+                    pass
+                    # last_exception = exc
 
                 # yield None (failed attempt)
                 yield None
@@ -48,9 +49,11 @@ def retry_async_yield(
                 if attempt < attempts and delay > 0:
                     await asyncio.sleep(delay)
 
+                # print(last_exception)
+
             # If we got here: no success
-            if last_exception:
-                raise last_exception
+            # if last_exception:
+            #     raise last_exception
 
         return wrapper
 

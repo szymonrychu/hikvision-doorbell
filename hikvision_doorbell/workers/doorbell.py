@@ -19,6 +19,7 @@ from hikvision_doorbell.models.mqtt import (
     MqttDiscoveryDevice,
     MqttLockDiscovery,
     MqttLockDiscoveryState,
+    MqttMessageAvailabilityPayload,
 )
 from hikvision_doorbell.settings import settings
 
@@ -38,6 +39,7 @@ class Doorbell:
         self._device_healthy = True
         self._device_info = None
         self._call_info = None
+        self._reseted_availability = True
         _device = MqttDiscoveryDevice(
             identifiers=[f"hik_{settings.HIK_HOST.replace('.', '_')}"],
             manufacturer=settings.DEVICE_MANUFACTURER,
@@ -81,17 +83,6 @@ class Doorbell:
             tasks.append(asyncio.create_task(t))
         return tasks
 
-    async def publish_discovery(self):
-        async with Client(
-            hostname=settings.MQTT_HOST,
-            port=settings.MQTT_PORT,
-            username=settings.MQTT_USER,
-            password=settings.MQTT_PASS,
-            protocol=ProtocolVersion.V311,
-        ) as mqtt:
-            for discovery in self._discovery_list:
-                await discovery.publish_discovery(mqtt, settings.MQTT_DISCOVERY_PREFIX)
-
     async def publish_if_changed(self, topic: str, value: str, retain=True):
         if self.state_cache.get(topic) == value:
             return
@@ -105,6 +96,28 @@ class Doorbell:
             protocol=ProtocolVersion.V311,
         ) as mqtt:
             await mqtt.publish(topic, str(value).encode("utf-8"), qos=1, retain=retain)
+
+    async def publish_discovery(self):
+        async with Client(
+            hostname=settings.MQTT_HOST,
+            port=settings.MQTT_PORT,
+            username=settings.MQTT_USER,
+            password=settings.MQTT_PASS,
+            protocol=ProtocolVersion.V311,
+        ) as mqtt:
+            for discovery in self._discovery_list:
+                await discovery.publish_discovery(mqtt, settings.MQTT_DISCOVERY_PREFIX)
+
+    async def publish_availability(self, available: bool):
+        for discovery in self._discovery_list:
+            a = (
+                MqttMessageAvailabilityPayload.payload_available
+                if available
+                else MqttMessageAvailabilityPayload.payload_not_available
+            )
+            await self.publish_if_changed(discovery.availability.topic, a.value)
+        if not available:
+            self._reseted_availability = True
 
     async def handle_lock_command(self):
         async with Client(
@@ -151,26 +164,38 @@ class Doorbell:
             path = path[1:]
         return f"{self._base_url}/{path}"
 
-    @retry_async_yield(10, 1, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadError, httpx.ReadTimeout))
+    @retry_async_yield(
+        settings.DEVICE_CALL_RETRY_MAX_COUNT,
+        settings.DEVICE_CALL_RETRY_DELAY,
+        (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadError, httpx.ReadTimeout),
+    )
     async def _get_device_info(self, client: httpx.AsyncClient) -> DeviceInfo | None:
         url = self._url("/ISAPI/System/deviceInfo")
         resp = await client.get(url)
-        resp.raise_for_status()
+        # resp.raise_for_status()
         if resp.status_code in (200, 204):
             return DeviceInfo.from_xml(resp.content.decode("utf-8"))
         return None
 
-    @retry_async_yield(10, 1, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadError, httpx.ReadTimeout))
+    @retry_async_yield(
+        settings.DEVICE_CALL_RETRY_MAX_COUNT,
+        settings.DEVICE_CALL_RETRY_DELAY,
+        (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadError, httpx.ReadTimeout),
+    )
     async def _get_call_status(self, client: httpx.AsyncClient) -> CallInfo | None:
         url = self._url("/ISAPI/VideoIntercom/callStatus")
         resp = await client.get(url)
-        resp.raise_for_status()
+        # resp.raise_for_status()
         if resp.status_code in (200, 204):
             data = json.loads(resp.content)
             return CallInfo[data["CallStatus"]["status"]]
         return None
 
-    @retry_async_yield(10, 1, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadError, httpx.ReadTimeout))
+    @retry_async_yield(
+        settings.DEVICE_CALL_RETRY_MAX_COUNT,
+        settings.DEVICE_CALL_RETRY_DELAY,
+        (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadError, httpx.ReadTimeout),
+    )
     async def _open_close_doors(self, client: httpx.AsyncClient, open: bool) -> DoorInfo | None:
         path = f"/ISAPI/AccessControl/RemoteControl/door/{(settings.DOOR_RELAY_ID)}"
         url = self._url(path)
@@ -215,8 +240,14 @@ class Doorbell:
                 if not attempt:
                     logger.debug("can't get call device info")
                     self._device_healthy = False
+                    await self.publish_availability(False)
                 else:
-                    # logger.debug("obtained device info")
+                    await self.publish_availability(True)
+                    if self._reseted_availability:
+                        await self.publish_if_changed(
+                            self._lock_discovery.state_topic, DoorInfo.closed.to_mqtt_lock_discovery_state().value
+                        )
+                        self._reseted_availability = False
                     self._device_info = cast(DeviceInfo, attempt)
 
             await asyncio.sleep(CALL_SLEEP_TIME)
@@ -230,7 +261,7 @@ class Doorbell:
 
             async for attempt in self._get_call_status(self._client):
                 if not attempt:
-                    self._device_healthy = False
+                    # self._device_healthy = False
                     await self.publish_if_changed(self._ring_discovery.state_topic, CallButtonStates.unknown.value)
 
                 if attempt:
