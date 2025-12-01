@@ -6,7 +6,7 @@ from typing import Any, Dict, List, cast
 import httpx
 from aiomqtt import Client, ProtocolVersion
 
-from hikvision_doorbell.helpers import retry_async_yield
+from hikvision_doorbell.helpers import PerMessageRateLimitFilter, retry_async_yield
 from hikvision_doorbell.models.hikvision import (
     CallButtonStates,
     CallInfo,
@@ -24,6 +24,7 @@ from hikvision_doorbell.models.mqtt import (
 from hikvision_doorbell.settings import settings
 
 logger = logging.getLogger(__name__)
+logger.addFilter(PerMessageRateLimitFilter(3600))
 
 CALL_SLEEP_TIME = 0.5
 REFRESH_SLEEP_TIME = 2
@@ -86,7 +87,7 @@ class Doorbell:
     async def publish_if_changed(self, topic: str, value: str, retain=True):
         if self.state_cache.get(topic) == value:
             return
-        logger.debug(f"publishing event on topic: '{topic}', value: '{str(value)}'")
+        logger.info(f"publishing event on topic: '{topic}', value: '{str(value)}'")
         self.state_cache[topic] = value
         async with Client(
             hostname=settings.MQTT_HOST,
@@ -128,7 +129,7 @@ class Doorbell:
             protocol=ProtocolVersion.V311,
         ) as mqtt:
             await mqtt.subscribe(self._lock_discovery.command_topic)
-            logger.debug(f"Subscribed to: {self._lock_discovery.command_topic}")
+            logger.info(f"Subscribed to: {self._lock_discovery.command_topic}")
 
             async for msg in mqtt.messages:
                 if str(msg.topic) != self._lock_discovery.command_topic:
@@ -208,7 +209,7 @@ class Doorbell:
         resp = await client.put(url, content=xml_body.encode("utf‑8"))
         if resp.status_code in (200, 204):
             status = DoorInfo.opened if open else DoorInfo.closed
-            logger.debug(f"{status.value} doors")
+            logger.info(f"{status.value} doors")
             return status
         return None
 
@@ -232,13 +233,13 @@ class Doorbell:
     async def handle_device_infos(self, stop_event: asyncio.Event):
         while not stop_event.is_set():
             if not self._client:
-                logger.debug("waiting for client")
+                logger.info("waiting for client")
                 await asyncio.sleep(0.1)
                 continue
 
             async for attempt in self._get_device_info(self._client):
                 if not attempt:
-                    logger.debug("can't get call device info")
+                    logger.info("can't get call device info")
                     self._device_healthy = False
                     await self.publish_availability(False)
                 else:
@@ -255,7 +256,7 @@ class Doorbell:
     async def handle_call_statuses(self, stop_event: asyncio.Event):
         while not stop_event.is_set():
             if not self._client:
-                logger.debug("waiting for client")
+                logger.info("waiting for client")
                 await asyncio.sleep(0.1)
                 continue
 

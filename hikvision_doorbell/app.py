@@ -11,8 +11,6 @@ logger = logging.getLogger("uvicorn")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting Hikvision MQTT bridge...")
-
     stop_event = asyncio.Event()
     app.state.stop_event = stop_event
 
@@ -25,16 +23,18 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    logger.info("Stopping Hikvision MQTT bridge...")
-
     stop_event.set()
     for t in tasks:
         t.cancel()
+
     for t in tasks:
         try:
             await t
         except asyncio.CancelledError:
             logger.info("Background task cancelled.")
+        except Exception as exc:
+            logger.error("Background task failed!", exc_info=exc)
+            raise
 
 
 app = FastAPI(title="Hikvision Doorbell MQTT Bridge", lifespan=lifespan)

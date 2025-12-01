@@ -1,9 +1,26 @@
 import asyncio
 import logging
+import time
+from collections import defaultdict
 from functools import wraps
 from typing import Any, AsyncGenerator, Callable, Tuple, Type
 
 logger = logging.getLogger(__name__)
+
+
+class PerMessageRateLimitFilter(logging.Filter):
+    def __init__(self, min_interval_seconds: int):
+        super().__init__()
+        self.min_interval = min_interval_seconds
+        self.last_times = defaultdict(lambda: 0.0)
+
+    def filter(self, record):
+        now = time.time()
+        key = record.getMessage()
+        if now - self.last_times[key] >= self.min_interval:
+            self.last_times[key] = now
+            return True
+        return False
 
 
 def retry_async_yield(
