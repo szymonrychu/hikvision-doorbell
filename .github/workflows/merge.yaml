@@ -25,7 +25,7 @@ jobs:
       - name: "Request review from @szymonrychu-bot"
         uses: "actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd" # v8
         with:
-          github-token: "${{ secrets.SZYMONRYCHU_TOKEN }}"
+          github-token: "${{ secrets.GH_TOKEN }}"
           script: |
             const pullRequest = context.payload.workflow_run.pull_requests[0]
             const repository = context.repo
@@ -44,7 +44,7 @@ jobs:
       - name: "Assign @szymonrychu-bot"
         uses: "actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd" # v8
         with:
-          github-token: "${{ secrets.SZYMONRYCHU_TOKEN }}"
+          github-token: "${{ secrets.GH_TOKEN }}"
           script: |
             const pullRequest = context.payload.workflow_run.pull_requests[0]
             const repository = context.repo
@@ -63,7 +63,7 @@ jobs:
       - name: "Approve pull request"
         uses: "actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd" # v8
         with:
-          github-token: "${{ secrets.SZYMONRYCHU_TOKEN }}"
+          github-token: "${{ secrets.GH_TOKEN }}"
           script: |
             const pullRequest = context.payload.workflow_run.pull_requests[0]
             const repository = context.repo
@@ -78,7 +78,7 @@ jobs:
       - name: "Merge pull request"
         uses: "actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd" # v8
         with:
-          github-token: "${{ secrets.SZYMONRYCHU_TOKEN }}"
+          github-token: "${{ secrets.GH_TOKEN }}"
           script: |
             const pullRequest = context.payload.workflow_run.pull_requests[0]
             const repository = context.repo

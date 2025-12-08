@@ -267,9 +267,14 @@ class Doorbell:
 
                 if attempt:
                     info = cast(CallInfo, attempt)
-                    await self.publish_if_changed(
-                        self._ring_discovery.state_topic, info.to_mqtt_event_discovery_event_type()
-                    )
+                    if info == CallInfo.ring:
+                        await self.publish_if_changed(self._ring_discovery.state_topic, CallButtonStates.pressed.value)
+                        await asyncio.sleep(1)
+                        await self.publish_if_changed(self._ring_discovery.state_topic, CallButtonStates.released.value)
+                    else:
+                        await self.publish_if_changed(
+                            self._ring_discovery.state_topic, info.to_mqtt_event_discovery_event_type()
+                        )
 
             await asyncio.sleep(CALL_SLEEP_TIME)
 

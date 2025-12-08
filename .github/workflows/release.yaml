@@ -11,9 +11,9 @@ env:
   CHART_NAME: hikvision-doorbell
   BOT_USER_NAME: szymonrichert.pl bot
   BOT_USER_EMAIL: bot@szymonrichert.pl
-  CHARTS_REPO_URL: selfhosted-kubernetes-charts
-  CHARTS_REPO_OWNER: szymonrychu
-  CHARTS_REPO_KEY: ${{ secrets.CHARTS_REPO_KEY }}
+  HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+  HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+  HARBOR_URL: harbor.szymonrichert.pl
 
 jobs:
 
@@ -25,19 +25,6 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0
-
-      - name: Configure Git
-        run: |
-          git config --global user.name "${BOT_USER_NAME}"
-          git config --global user.email "${BOT_USER_EMAIL}"
-
-      - name: Login to GHCR
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3
-        if: github.event_name != 'pull_request'
-        with:
-          registry: ghcr.io
-          username: szymonrychu
-          password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Parse versions in commit and setup debs for tag
         id: prep
@@ -55,16 +42,31 @@ jobs:
           echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
           echo "latest_repo_tag=${LATEST_REPO_TAG}" >> $GITHUB_OUTPUT
 
+      - name: Login to container registry
+        run: |
+          set -e
+          echo "$HARBOR_PASSWORD" | \
+            docker login "https://${HARBOR_URL}/containers" \
+              -u "$HARBOR_USERNAME" \
+              --password-stdin
+
+      - name: Login to chart registry
+        run: |
+          set -e
+          echo "$HARBOR_PASSWORD" \
+            | helm registry login "oci://${HARBOR_URL}/charts" \
+              -u "$HARBOR_USERNAME" \
+              --password-stdin
+
       - name: Tag existing container for release
         run: |
-          echo '${{ secrets.GL_REGISTRY_PASSWORD }}' | docker login -u ${{ secrets.GL_REGISTRY_USER }} --password-stdin https://registry.gitlab.com/
           set -e
-          docker pull registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.short_sha }}
-          docker tag registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.short_sha }} registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.container_version }}
-          docker push registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.container_version }}
+          docker pull "${HARBOR_URL}/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.short_sha }}"
+          docker tag "${HARBOR_URL}/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.short_sha }}" "${HARBOR_URL}/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.container_version }}"
+          docker push "${HARBOR_URL}/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.container_version }}"
 
-          docker tag registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.short_sha }} registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:latest
-          docker push registry.gitlab.com/szymonrychu/containers/${CONTAINER_NAME}:latest
+          docker tag "${HARBOR_URL}/containers/${CONTAINER_NAME}:${{ steps.prep.outputs.short_sha }}" "${HARBOR_URL}/containers/${CONTAINER_NAME}:latest"
+          docker push ${HARBOR_URL}/containers/${CONTAINER_NAME}:latest
 
       - name: Package and upload charts
         run: |
@@ -72,15 +74,13 @@ jobs:
           helm package \
             --dependency-update "./chart/${CHART_NAME}" \
             --version ${{ steps.prep.outputs.chart_version }} \
-            --app-version ${{ steps.prep.outputs.app_version }} \
+            --app-version ${{ steps.prep.outputs.container_version }} \
             -u -d ./ "./chart/${CHART_NAME}"
 
-          curl --request POST \
-            --form "chart=@${CHART_NAME}-${{ steps.prep.outputs.chart_version }}.tgz" \
-            --user "${{ secrets.GL_REGISTRY_USER }}:${{ secrets.GL_REGISTRY_PASSWORD }}" \
-            https://gitlab.com/api/v4/projects/41596878/packages/helm/api/stable/charts
+          helm push "${CHART_NAME}-${{ steps.prep.outputs.chart_version }}.tgz" "oci://${HARBOR_URL}/charts"
+
 
       - name: Create release
         env:
-          GITHUB_TOKEN: ${{ secrets.SZYMONRYCHU_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: gh release create "$GITHUB_REF_NAME"

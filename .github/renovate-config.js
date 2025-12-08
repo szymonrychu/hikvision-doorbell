@@ -10,7 +10,7 @@ module.exports = {
   "platform": "github",
   "prConcurrentLimit": 100,
   "rebaseWhen": "behind-base-branch",
-  "repositories": ["szymonrychu/oauth2-proxy-admission-controller"],
+  "repositories": ["szymonrychu/hikvision-doorbell"],
   "semanticCommits": "enabled",
   "suppressNotifications": ["prIgnoreNotification"],
   "username": "szymonrichert.pl bot",

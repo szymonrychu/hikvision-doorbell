@@ -1,8 +1,7 @@
 {
-  "dryRun": null,
   "extends": ["config:recommended", ":rebaseStalePrs"],
   "dependencyDashboard": false,
-  "rebaseWhen": "behind-base-branch",
+  "rebaseWhen": "conflicted",
   "suppressNotifications": ["prIgnoreNotification"],
   "gitAuthor": "szymonrichert.pl bot <bot@szymonrichert.pl>",
   "platform": "github",
@@ -11,23 +10,32 @@
       "customType": "regex",
       "fileMatch": ["(^|/)Chart\\.yaml$"],
       "matchStrings": [
-        "#\\s?renovate: image=(?<depName>.*?)\\s?appVersion:\\s?\\\"?(?<currentValue>[\\w+\\.\\-]*)"
+        "#\\s?renovate: image=(?<depName>\\S+)[\\s\\r\\n]+appVersion:\\s*\"?(?<currentValue>[\\w.-]+)\"?",
+        "(?<currentValue>[\\w.-]+) *#\\s*renovate:\\s*image=(?<depName>\\S+)"
       ],
       "datasourceTemplate": "docker"
     },
     {
       "customType": "regex",
-      "description": "Update image in values.yaml",
-      "fileMatch": ["^values.yaml$"],
+      "description": "Detect image/repository/tag in values, Chart.yaml and templates",
+      "fileMatch": ["(^|/)values(?:\\.ya?ml)$", "(^|/)Chart\\.yaml$", "(^|/)templates/.*\\.ya?ml$"],
       "matchStringsStrategy": "combination",
       "matchStrings": [
-        "image:\\s*\"(?<depName>.*)\"\\s*//",
-        "tag:\\s*\"(?<currentValue>.*)\"\\s*//"
+        "image:\\s*(?:\\\"|')?(?<depName>[\\w./-]+)(?::(?<currentValue>[\\w.-]+))?(?:\\\"|')?",
+        "repository:\\s*(?:\\\"|')?(?<depName>[\\w./-]+)(?:\\\"|')?",
+        "tag:\\s*(?:\\\"|')?(?<currentValue>[\\w.-]+)(?:\\\"|')?",
+        "image:\\s*\\n\\s*repository:\\s*(?:\\\"|')?(?<depName>[\\w./-]+)(?:\\\"|')?\\n\\s*tag:\\s*(?:\\\"|')?(?<currentValue>[\\w.-]+)(?:\\\"|')?",
+        "image:\\s*\\n\\s*name:\\s*(?:\\\"|')?(?<depName>[\\w./-]+)(?:\\\"|')?\\n\\s*tag:\\s*(?:\\\"|')?(?<currentValue>[\\w.-]+)(?:\\\"|')?"
       ],
       "datasourceTemplate": "docker"
     }
   ],
   "packageRules": [
+    {
+      "matchManagers": ["regex"],
+      "matchPackagePatterns": [".*"],
+      "versioning": "regex:^(?:release-|v|stable-)?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:\\.(?<revision>\\d+))?$"
+    },
     {
       "matchManagers": ["helm-requirements", "helm-values", "regex"],
       "postUpgradeTasks": {
@@ -38,15 +46,27 @@
       }
     },
     {
-      "description": "MinorAutoUpgrade",
-      "matchUpdateTypes": ["pin", "digest", "patch", "minor"],
-      "minimumReleaseAge": null,
-      "labels": ["automerge"]
+      "matchManagers": [
+        ".*"
+      ],
+      "matchPackagePatterns": [
+        ".*"
+      ],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["major"]
     },
     {
-      "description": "MajorUpgrade",
-      "matchUpdateTypes": ["major"],
-      "minimumReleaseAge": "7 days"
+      "matchManagers": [
+        ".*"
+      ],
+      "matchPackagePatterns": [
+        ".*"
+      ],
+      "matchUpdateTypes": ["minor","patch","pin","digest","revision"],
+      "suppressNotifications": ["prIgnoreNotification", "prEditedNotification"],
+      "automerge": true,
+      "labels": ["automerge","minor"]
     }
   ]
 }
