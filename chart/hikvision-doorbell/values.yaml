@@ -24,7 +24,7 @@ mqtt:
 replicaCount: 1
 
 image:
-  repository: registry.gitlab.com/szymonrychu/containers/hikvision-doorbell
+  repository: harbor.szymonrichert.pl/containers/hikvision-doorbell
   pullPolicy: IfNotPresent
   tag: ""
 

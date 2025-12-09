@@ -11,11 +11,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GH_BOT_TOKEN }}
       - name: Renovate
         uses: renovatebot/github-action@a3c115cd6676c8a5bc72f9715f108759e570daf5 # v43.0.19
         with:
           configurationFile: .github/renovate-config.js
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GH_BOT_TOKEN }}
         env:
           RENOVATE_AUTOMERGE: true
