@@ -1,4 +1,4 @@
-name: Daily Tagger
+name: daily-release
 
 on:
   schedule:

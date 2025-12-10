@@ -1,4 +1,4 @@
-name: "Merge Succesfull Run"
+name: merge-succesfull-mr
 
 on:
   workflow_run:

@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
+      - '*.*.*'    # matches 0.0.8, 1.2.3, etc.
+      - 'v*.*.*'   # matches v1.2.3 if you use a leading v
 
 env:
   GIT_SHA: ${{ github.sha }}
