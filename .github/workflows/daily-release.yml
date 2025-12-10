@@ -1,0 +1,64 @@
+name: Daily Tagger
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # daily at 02:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  tag-if-changed:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "szymonrychu-bot"
+          git config user.email "szymonrychu-bot@do-not-reply.com"
+
+      - name: Get latest tag
+        id: prep
+        run: |
+          git fetch --tags
+          export LATEST_REPO_TAG="$(git tag -l --sort=-v:refname "[0-9]*" | head -n1)"
+
+          if git diff --quiet "$LATEST_REPO_TAG" HEAD; then
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "new_tag=0.0.1" >> $GITHUB_OUTPUT
+            exit
+          fi
+
+          if [[ -z "$LATEST_REPO_TAG" ]]; then
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "new_tag=0.0.1" >> $GITHUB_OUTPUT
+            exit
+          fi
+
+          IFS='-' read -r STABLE_TAG EXTRA <<< "$LATEST_REPO_TAG"
+          IFS='.' read -r TAG_MAJOR TAG_MINOR TAG_PATCH <<< "$STABLE_TAG"
+
+          if [[ -z "$TAG_MAJOR" ]] || [[ -z "$TAG_MINOR" ]] || [[ -z "$TAG_PATCH" ]]; then
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "new_tag=0.0.1" >> $GITHUB_OUTPUT
+            exit
+          fi
+
+          TAG_PATCH="$((TAG_PATCH + 1))"
+
+          echo "new_tag=${TAG_MAJOR}.${TAG_MINOR}.${TAG_PATCH}" >> $GITHUB_OUTPUT
+          echo "changes=true" >> $GITHUB_OUTPUT
+
+
+      - name: Create and push tag
+        if: steps.prep.outputs.changes == 'true'
+        run: |
+          TAG="${{ steps.prep.outputs.new_tag }}"
+          echo "Creating tag '$TAG'"
+          git tag "$TAG"
+          git push origin "$TAG"
