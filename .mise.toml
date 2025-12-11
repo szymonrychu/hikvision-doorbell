@@ -1,7 +1,7 @@
 [tools]
 python = "3.14"
 uv = "0.9.17"
-poetry = "2.0.0"
+poetry = "2.2.1"
 
 [env]
 POETRY_INSTALLER_MAX_WORKERS = "4"
