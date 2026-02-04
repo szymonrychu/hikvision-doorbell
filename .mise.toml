@@ -1,6 +1,6 @@
 [tools]
 python = "3.14"
-uv = "0.9.28"
+uv = "0.9.29"
 poetry = "2.3.2"
 
 [env]
