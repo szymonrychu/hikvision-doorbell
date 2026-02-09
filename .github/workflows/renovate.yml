@@ -13,7 +13,7 @@ jobs:
         with:
           token: ${{ secrets.GH_BOT_TOKEN }}
       - name: Renovate
-        uses: renovatebot/github-action@98c8f1b0835e163b9fdfc7c86dff40dadc7162ee # v45.0.3
+        uses: renovatebot/github-action@e23f4d9675532445118c886434f5a34292b630b4 # v46.0.2
         with:
           configurationFile: .github/renovate-config.js
           token: ${{ secrets.GH_BOT_TOKEN }}
