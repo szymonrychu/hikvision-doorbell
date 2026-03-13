@@ -52,3 +52,11 @@ repos:
     rev: v0.45.0
     hooks:
     - id: markdownlint-fix
+
+  - repo: local
+    hooks:
+    - id: pytest
+      name: pytest with coverage
+      entry: bash -c 'poetry run coverage run -m pytest && poetry run coverage report --fail-under=80'
+      language: system
+      pass_filenames: false

@@ -67,10 +67,10 @@ jobs:
         run: |
           poetry run pre-commit run -a
 
-      # - name: Pytest
-      #   run: |
-      #     poetry run coverage run -m pytest
-      #     poetry run coverage report -m
+      - name: Pytest
+        run: |
+          poetry run coverage run -m pytest
+          poetry run coverage report -m --fail-under=80
 
   build:
     needs:
