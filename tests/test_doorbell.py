@@ -324,3 +324,173 @@ class TestDoorbellHandleDeviceInfos:
                 except __import__("asyncio").CancelledError:
                     pass
         assert doorbell._device_info is not None or not doorbell._device_healthy
+
+    @pytest.mark.asyncio
+    async def test_handle_device_infos_waits_for_client(self, doorbell):
+        stop = __import__("asyncio").Event()
+        doorbell._client = None
+
+        async def set_stop():
+            await __import__("asyncio").sleep(0.2)
+            stop.set()
+
+        __import__("asyncio").create_task(set_stop())
+        t = __import__("asyncio").create_task(doorbell.handle_device_infos(stop))
+        await __import__("asyncio").sleep(0.4)
+        t.cancel()
+        try:
+            await t
+        except __import__("asyncio").CancelledError:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_handle_device_infos_exception_marks_unhealthy(self, doorbell):
+        stop = __import__("asyncio").Event()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=Exception("connection lost"))
+        doorbell._client = mock_client
+
+        with patch.object(doorbell, "publish_availability", AsyncMock()):
+            t = __import__("asyncio").create_task(doorbell.handle_device_infos(stop))
+            await __import__("asyncio").sleep(0.3)
+            stop.set()
+            await __import__("asyncio").sleep(0.2)
+            t.cancel()
+            try:
+                await t
+            except __import__("asyncio").CancelledError:
+                pass
+        assert doorbell._device_healthy is False
+
+
+class TestDoorbellHandleCallStatuses:
+    @pytest.mark.asyncio
+    async def test_handle_call_statuses_publishes_idle(self, doorbell):
+        stop = __import__("asyncio").Event()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b'{"CallStatus": {"status": "idle"}}'
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        doorbell._client = mock_client
+
+        with patch.object(doorbell, "publish_if_changed", AsyncMock()) as mock_pub:
+            t = __import__("asyncio").create_task(doorbell.handle_call_statuses(stop))
+            await __import__("asyncio").sleep(0.3)
+            stop.set()
+            await __import__("asyncio").sleep(0.2)
+            t.cancel()
+            try:
+                await t
+            except __import__("asyncio").CancelledError:
+                pass
+            assert mock_pub.called
+
+    @pytest.mark.asyncio
+    async def test_handle_call_statuses_publishes_ring_press_and_release(self, doorbell):
+        stop = __import__("asyncio").Event()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.content = b'{"CallStatus": {"status": "ring"}}'
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        doorbell._client = mock_client
+
+        with patch.object(doorbell, "publish_if_changed", AsyncMock()) as mock_pub:
+            t = __import__("asyncio").create_task(doorbell.handle_call_statuses(stop))
+            await __import__("asyncio").sleep(1.5)
+            stop.set()
+            await __import__("asyncio").sleep(0.2)
+            t.cancel()
+            try:
+                await t
+            except __import__("asyncio").CancelledError:
+                pass
+            calls = [str(c) for c in mock_pub.call_args_list]
+            assert any("pressed" in c for c in calls)
+            assert any("released" in c for c in calls)
+
+    @pytest.mark.asyncio
+    async def test_handle_call_statuses_waits_for_client(self, doorbell):
+        stop = __import__("asyncio").Event()
+        doorbell._client = None
+
+        async def set_stop():
+            await __import__("asyncio").sleep(0.2)
+            stop.set()
+
+        __import__("asyncio").create_task(set_stop())
+        t = __import__("asyncio").create_task(doorbell.handle_call_statuses(stop))
+        await __import__("asyncio").sleep(0.4)
+        t.cancel()
+        try:
+            await t
+        except __import__("asyncio").CancelledError:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_handle_call_statuses_exception_publishes_unknown(self, doorbell):
+        stop = __import__("asyncio").Event()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=Exception("network error"))
+        doorbell._client = mock_client
+
+        with patch.object(doorbell, "publish_if_changed", AsyncMock()) as mock_pub:
+            t = __import__("asyncio").create_task(doorbell.handle_call_statuses(stop))
+            await __import__("asyncio").sleep(0.3)
+            stop.set()
+            await __import__("asyncio").sleep(0.2)
+            t.cancel()
+            try:
+                await t
+            except __import__("asyncio").CancelledError:
+                pass
+            calls = [str(c) for c in mock_pub.call_args_list]
+            assert any("unknown" in c for c in calls)
+
+    @pytest.mark.asyncio
+    async def test_handle_call_statuses_publishes_unknown_on_none_attempt(self, doorbell):
+        stop = __import__("asyncio").Event()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        doorbell._client = mock_client
+
+        with patch.object(doorbell, "publish_if_changed", AsyncMock()) as mock_pub:
+            t = __import__("asyncio").create_task(doorbell.handle_call_statuses(stop))
+            await __import__("asyncio").sleep(0.3)
+            stop.set()
+            await __import__("asyncio").sleep(0.2)
+            t.cancel()
+            try:
+                await t
+            except __import__("asyncio").CancelledError:
+                pass
+            calls = [str(c) for c in mock_pub.call_args_list]
+            assert any("unknown" in c for c in calls)
+
+
+class TestDoorbellPublishIfChangedError:
+    @pytest.mark.asyncio
+    async def test_publish_if_changed_logs_on_mqtt_error(self, doorbell):
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.side_effect = Exception("mqtt down")
+
+        with patch(
+            "hikvision_doorbell.workers.doorbell.Client",
+            return_value=mock_cm,
+        ):
+            await doorbell.publish_if_changed("topic/test", "value")
+        assert doorbell.state_cache.get("topic/test") == "value"
+
+    @pytest.mark.asyncio
+    async def test_publish_discovery_logs_on_mqtt_error(self, doorbell):
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.side_effect = Exception("mqtt down")
+
+        with patch(
+            "hikvision_doorbell.workers.doorbell.Client",
+            return_value=mock_cm,
+        ):
+            await doorbell.publish_discovery()
