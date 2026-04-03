@@ -82,8 +82,6 @@ def while_async_task_done(
     def decorator(func: Callable[..., Any]):
         @wraps(func)
         async def wrapper(*args, **kwargs) -> AsyncGenerator[Any, None]:
-            pass
-
             while not stop_event.is_set():
                 try:
                     result = await func(*args, **kwargs)

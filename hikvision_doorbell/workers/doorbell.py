@@ -239,12 +239,12 @@ class Doorbell:
         path = f"/ISAPI/AccessControl/RemoteControl/door/{(settings.DOOR_RELAY_ID)}"
         url = self._url(path)
         open_close = "open" if open else "close"
-        xml_body = f"""<?xml version="1.0" encoding="UTF‑8"?>
+        xml_body = f"""<?xml version="1.0" encoding="UTF-8"?>
 <RemoteControlDoor>
   <cmd>{open_close}</cmd>
 </RemoteControlDoor>
 """
-        resp = await client.put(url, content=xml_body.encode("utf‑8"))
+        resp = await client.put(url, content=xml_body.encode("utf-8"))
         if resp.status_code in (200, 204):
             status = DoorInfo.opened if open else DoorInfo.closed
             logger.info(f"{status.value} doors")
