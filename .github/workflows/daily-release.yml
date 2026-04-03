@@ -5,8 +5,16 @@ on:
     - cron: '0 2 * * *' # daily at 02:00 UTC
   workflow_dispatch: {}
 
+env:
+  GIT_SHA: ${{ github.sha }}
+  CONTAINER_NAME: hikvision-doorbell
+  CHART_NAME: hikvision-doorbell
+  HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+  HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+  HARBOR_URL: harbor.szymonrichert.pl
+
 jobs:
-  tag-if-changed:
+  release-if-changed:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -22,19 +30,19 @@ jobs:
           git config user.name "szymonrychu-bot"
           git config user.email "szymonrychu-bot@do-not-reply.com"
 
-      - name: Get latest tag
+      - name: Get latest tag and determine new version
         id: prep
         run: |
           git fetch --tags
           export LATEST_REPO_TAG="$(git tag -l --sort=-v:refname "[0-9]*" | head -n1)"
 
-          if git diff --quiet "$LATEST_REPO_TAG" HEAD; then
-            echo "changes=false" >> $GITHUB_OUTPUT
+          if [[ -z "$LATEST_REPO_TAG" ]]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
             echo "new_tag=0.0.1" >> $GITHUB_OUTPUT
             exit
           fi
 
-          if [[ -z "$LATEST_REPO_TAG" ]]; then
+          if git diff --quiet "$LATEST_REPO_TAG" HEAD; then
             echo "changes=false" >> $GITHUB_OUTPUT
             echo "new_tag=0.0.1" >> $GITHUB_OUTPUT
             exit
@@ -54,6 +62,8 @@ jobs:
           echo "new_tag=${TAG_MAJOR}.${TAG_MINOR}.${TAG_PATCH}" >> $GITHUB_OUTPUT
           echo "changes=true" >> $GITHUB_OUTPUT
 
+          export SHORT_SHA="$(echo ${GIT_SHA:0:7})"
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
 
       - name: Create and push tag
         if: steps.prep.outputs.changes == 'true'
@@ -62,3 +72,57 @@ jobs:
           echo "Creating tag '$TAG'"
           git tag "$TAG"
           git push origin "$TAG"
+
+      - name: Login to container registry
+        if: steps.prep.outputs.changes == 'true'
+        run: |
+          set -e
+          echo "$HARBOR_PASSWORD" | \
+            docker login "https://${HARBOR_URL}/containers" \
+              -u "$HARBOR_USERNAME" \
+              --password-stdin
+
+      - name: Login to chart registry
+        if: steps.prep.outputs.changes == 'true'
+        run: |
+          set -e
+          echo "$HARBOR_PASSWORD" \
+            | helm registry login "oci://${HARBOR_URL}/charts" \
+              -u "$HARBOR_USERNAME" \
+              --password-stdin
+
+      - name: Tag existing container for release
+        if: steps.prep.outputs.changes == 'true'
+        run: |
+          set -e
+          TAG="${{ steps.prep.outputs.new_tag }}"
+          SHORT_SHA="${{ steps.prep.outputs.short_sha }}"
+
+          docker pull "${HARBOR_URL}/containers/${CONTAINER_NAME}:${SHORT_SHA}"
+          docker tag "${HARBOR_URL}/containers/${CONTAINER_NAME}:${SHORT_SHA}" "${HARBOR_URL}/containers/${CONTAINER_NAME}:${TAG}"
+          docker push "${HARBOR_URL}/containers/${CONTAINER_NAME}:${TAG}"
+
+          docker tag "${HARBOR_URL}/containers/${CONTAINER_NAME}:${SHORT_SHA}" "${HARBOR_URL}/containers/${CONTAINER_NAME}:latest"
+          docker push "${HARBOR_URL}/containers/${CONTAINER_NAME}:latest"
+
+      - name: Package and upload charts
+        if: steps.prep.outputs.changes == 'true'
+        run: |
+          set -e
+          TAG="${{ steps.prep.outputs.new_tag }}"
+
+          helm package \
+            --dependency-update "./chart/${CHART_NAME}" \
+            --version "${TAG}" \
+            --app-version "${TAG}" \
+            -u -d ./ "./chart/${CHART_NAME}"
+
+          helm push "${CHART_NAME}-${TAG}.tgz" "oci://${HARBOR_URL}/charts"
+
+      - name: Create GitHub release
+        if: steps.prep.outputs.changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          TAG="${{ steps.prep.outputs.new_tag }}"
+          gh release create "$TAG" --generate-notes
