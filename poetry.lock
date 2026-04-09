@@ -440,14 +440,14 @@ files = [
 
 [[package]]
 name = "more-itertools"
-version = "10.8.0"
+version = "11.0.1"
 description = "More routines for operating on iterables, beyond itertools"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "more_itertools-10.8.0-py3-none-any.whl", hash = "sha256:52d4362373dcf7c52546bc4af9a86ee7c4579df9a8dc268be0a2f949d376cc9b"},
-    {file = "more_itertools-10.8.0.tar.gz", hash = "sha256:f638ddf8a1a0d134181275fb5d58b086ead7c6a72429ad725c67503f13ba30bd"},
+    {file = "more_itertools-11.0.1-py3-none-any.whl", hash = "sha256:eaf287826069452a8f61026c597eae2428b2d1ba2859083abbf240b46842ce6d"},
+    {file = "more_itertools-11.0.1.tar.gz", hash = "sha256:fefaf25b7ab08f0b45fa9f1892cae93b9fc0089ef034d39213bce15f1cc9e199"},
 ]
 
 [[package]]
@@ -1533,4 +1533,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "beab278906643514aa77ea699eb0e25eff02c1f05799f0f1175e959f4bc8ae06"
+content-hash = "aabf7f10ddae3ffbd2e7d13ba4ada308c212d5542d3cbd3d50b1ea24571decc2"
