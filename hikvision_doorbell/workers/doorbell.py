@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, cast
+from typing import Any, cast
 
 import httpx
 from aiomqtt import Client, ProtocolVersion
@@ -30,6 +30,8 @@ logger.addFilter(PerMessageRateLimitFilter(3600))
 
 CALL_SLEEP_TIME = 0.5
 REFRESH_SLEEP_TIME = 2
+HA_BIRTH_TOPIC = "homeassistant/status"
+RING_EVENT_TYPES = [t.value for t in CallButtonStates if t is not CallButtonStates.unknown]
 
 
 # ───────────────────────────────────────────────
@@ -56,7 +58,7 @@ class Doorbell:
             name=settings.DEVICE_SENSOR_NAME,
             unique_id=settings.DEVICE_SENSOR_UID,
             device=_device,
-            event_types=[t.value for t in CallButtonStates],
+            event_types=RING_EVENT_TYPES,
             state_topic="/".join([settings.MQTT_BASE_TOPIC.rstrip("/"), settings.DEVICE_SENSOR_NAME, "state"]),
         )
         self._lock_discovery = MqttLockDiscovery(
@@ -73,12 +75,13 @@ class Doorbell:
             self._lock_discovery,
             self._ring_discovery,
         ]
-        self.state_cache: Dict[str, Any] = {}
+        self.state_cache: dict[str, Any] = {}
 
-    def tasks(self, stop_event: asyncio.Event) -> List[asyncio.Task]:
+    def tasks(self, stop_event: asyncio.Event) -> list[asyncio.Task]:
         tasks = []
         for t in [
             self.handle_lock_command(stop_event),
+            self.handle_birth_message(stop_event),
             self.refresh_client(stop_event),
             self.handle_device_infos(stop_event),
             self.handle_call_statuses(stop_event),
@@ -89,7 +92,7 @@ class Doorbell:
     async def publish_if_changed(self, topic: str, value: str, retain=True):
         if self.state_cache.get(topic) == value:
             return
-        logger.info(f"publishing event on topic: '{topic}', value: '{str(value)}'")
+        logger.info(f"publishing event on topic: '{topic}', value: '{value!s}'")
         self.state_cache[topic] = value
         try:
             async with Client(
@@ -102,6 +105,46 @@ class Doorbell:
                 await mqtt.publish(topic, str(value).encode("utf-8"), qos=1, retain=retain)
         except Exception as e:
             logger.warning("MQTT publish failed for topic %r: %s", topic, e)
+
+    @staticmethod
+    def ring_event_payload(event_type: str | None) -> str | None:
+        """JSON payload for the ring event topic, or None when the state is not a valid event type."""
+        if event_type not in RING_EVENT_TYPES:
+            return None
+        return json.dumps({"event_type": event_type})
+
+    def ring_event_payloads(self) -> list[str]:
+        return [cast(str, self.ring_event_payload(t)) for t in RING_EVENT_TYPES]
+
+    async def publish_ring_event(self, event_type: str | None):
+        payload = self.ring_event_payload(event_type)
+        if payload is not None:
+            await self.publish_if_changed(self._ring_discovery.state_topic, payload)
+
+    async def handle_birth_message(self, stop_event: asyncio.Event):
+        """Re-announce discovery whenever Home Assistant publishes its birth message."""
+        while not stop_event.is_set():
+            try:
+                async with Client(
+                    hostname=settings.MQTT_HOST,
+                    port=settings.MQTT_PORT,
+                    username=settings.MQTT_USER,
+                    password=settings.MQTT_PASS,
+                    protocol=ProtocolVersion.V311,
+                ) as mqtt:
+                    await mqtt.subscribe(HA_BIRTH_TOPIC)
+                    async for msg in mqtt.messages:
+                        if stop_event.is_set():
+                            return
+                        payload = msg.payload.decode() if isinstance(msg.payload, bytes) else str(msg.payload)
+                        if str(msg.topic) == HA_BIRTH_TOPIC and payload == "online":
+                            logger.info("Home Assistant is online, re-announcing discovery")
+                            await self.publish_discovery()
+                        if stop_event.is_set():
+                            return
+            except Exception as e:
+                logger.warning("MQTT birth message handler failed: %s", e)
+                await asyncio.sleep(5)
 
     async def publish_discovery(self):
         try:
@@ -182,8 +225,7 @@ class Doorbell:
         return self._device_healthy
 
     def _url(self, path: str) -> str:
-        if path.startswith("/"):
-            path = path[1:]
+        path = path.removeprefix("/")
         return f"{self._base_url}/{path}"
 
     @retry_async_yield(
@@ -202,7 +244,7 @@ class Doorbell:
             logger.warning("Failed to parse device info XML: %s", e)
             return None
 
-    def _parse_call_status(self, data: Dict[str, Any]) -> CallInfo | None:
+    def _parse_call_status(self, data: dict[str, Any]) -> CallInfo | None:
         """Safely parse call status from JSON; returns None for unknown/missing values."""
         status = (data.get("CallStatus") or {}).get("status")
         if status is None:
@@ -317,26 +359,18 @@ class Doorbell:
             try:
                 async for attempt in self._get_call_status(self._client):
                     if not attempt:
-                        await self.publish_if_changed(self._ring_discovery.state_topic, CallButtonStates.unknown.value)
-
-                    if attempt:
-                        info = cast(CallInfo, attempt)
-                        if info == CallInfo.ring:
-                            await self.publish_if_changed(
-                                self._ring_discovery.state_topic, CallButtonStates.pressed.value
-                            )
-                            await asyncio.sleep(1)
-                            await self.publish_if_changed(
-                                self._ring_discovery.state_topic, CallButtonStates.released.value
-                            )
-                        else:
-                            await self.publish_if_changed(
-                                self._ring_discovery.state_topic,
-                                info.to_mqtt_event_discovery_event_type(),
-                            )
+                        continue
+                    info = cast(CallInfo, attempt)
+                    if info == CallInfo.ring:
+                        await self.publish_ring_event(CallButtonStates.pressed.value)
+                        await asyncio.sleep(1)
+                        await self.publish_ring_event(CallButtonStates.released.value)
+                    else:
+                        await self.publish_ring_event(
+                            json.loads(info.to_mqtt_event_discovery_event_type())["event_type"]
+                        )
             except Exception as e:
                 logger.warning("Call status fetch failed after retries: %s", e)
-                await self.publish_if_changed(self._ring_discovery.state_topic, CallButtonStates.unknown.value)
 
             await asyncio.sleep(CALL_SLEEP_TIME)
 

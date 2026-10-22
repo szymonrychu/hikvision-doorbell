@@ -1,6 +1,5 @@
 import logging
 from enum import Enum
-from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,8 +29,8 @@ class Settings(BaseSettings):
     # MQTT broker settings
     MQTT_HOST: str = "mosquitto"
     MQTT_PORT: int = 1883
-    MQTT_USER: Optional[str] = None
-    MQTT_PASS: Optional[str] = None
+    MQTT_USER: str | None = None
+    MQTT_PASS: str | None = None
     MQTT_BASE_TOPIC: str = "home/hikvision_doorbell"
     MQTT_DISCOVERY_PREFIX: str = "homeassistant"
 

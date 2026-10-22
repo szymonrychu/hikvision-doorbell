@@ -1,12 +1,13 @@
 """Tests for hikvision_doorbell.workers.doorbell."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from hikvision_doorbell.models.hikvision import CallInfo, DeviceInfo, DoorInfo
 from hikvision_doorbell.models.mqtt import MqttMessageAvailabilityPayload
-from hikvision_doorbell.workers.doorbell import Doorbell
+from hikvision_doorbell.workers.doorbell import RING_EVENT_TYPES, Doorbell
 from tests.conftest import SAMPLE_DEVICE_INFO_XML
 
 
@@ -267,7 +268,7 @@ class TestDoorbellTasks:
     async def test_tasks_returns_list_of_tasks(self, doorbell):
         stop = __import__("asyncio").Event()
         tasks = doorbell.tasks(stop)
-        assert len(tasks) == 4
+        assert len(tasks) == 5
         for t in tasks:
             assert hasattr(t, "cancel")
         stop.set()
@@ -406,9 +407,14 @@ class TestDoorbellHandleCallStatuses:
                 await t
             except __import__("asyncio").CancelledError:
                 pass
-            calls = [str(c) for c in mock_pub.call_args_list]
-            assert any("pressed" in c for c in calls)
-            assert any("released" in c for c in calls)
+            ring_topic = doorbell._ring_discovery.state_topic
+            ring_payloads = [c.args[1] for c in mock_pub.call_args_list if c.args[0] == ring_topic]
+            assert ring_payloads, "nothing published on the ring state topic"
+            decoded = [json.loads(p) for p in ring_payloads]
+            assert all(set(d) == {"event_type"} for d in decoded)
+            assert all(d["event_type"] in RING_EVENT_TYPES for d in decoded)
+            assert {d["event_type"] for d in decoded} >= {"pressed", "released"}
+            assert "unknown" not in ring_payloads
 
     @pytest.mark.asyncio
     async def test_handle_call_statuses_waits_for_client(self, doorbell):
@@ -429,7 +435,7 @@ class TestDoorbellHandleCallStatuses:
             pass
 
     @pytest.mark.asyncio
-    async def test_handle_call_statuses_exception_publishes_unknown(self, doorbell):
+    async def test_handle_call_statuses_exception_publishes_nothing(self, doorbell):
         stop = __import__("asyncio").Event()
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(side_effect=Exception("network error"))
@@ -446,10 +452,10 @@ class TestDoorbellHandleCallStatuses:
             except __import__("asyncio").CancelledError:
                 pass
             calls = [str(c) for c in mock_pub.call_args_list]
-            assert any("unknown" in c for c in calls)
+            assert not any("unknown" in c for c in calls)
 
     @pytest.mark.asyncio
-    async def test_handle_call_statuses_publishes_unknown_on_none_attempt(self, doorbell):
+    async def test_handle_call_statuses_none_attempt_publishes_nothing(self, doorbell):
         stop = __import__("asyncio").Event()
         mock_resp = MagicMock()
         mock_resp.status_code = 500
@@ -468,7 +474,39 @@ class TestDoorbellHandleCallStatuses:
             except __import__("asyncio").CancelledError:
                 pass
             calls = [str(c) for c in mock_pub.call_args_list]
-            assert any("unknown" in c for c in calls)
+            assert not any("unknown" in c for c in calls)
+
+
+class TestDoorbellReannounce:
+    @pytest.mark.asyncio
+    async def test_reannounce_on_birth(self, doorbell):
+        stop = __import__("asyncio").Event()
+        birth = MagicMock()
+        birth.topic = "homeassistant/status"
+        birth.payload = b"online"
+        other = MagicMock()
+        other.topic = "homeassistant/status"
+        other.payload = b"offline"
+
+        async def messages():
+            yield other
+            yield birth
+            stop.set()
+
+        mock_mqtt = MagicMock()
+        mock_mqtt.subscribe = AsyncMock()
+        mock_mqtt.messages = messages()
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.return_value = mock_mqtt
+        mock_cm.__aexit__.return_value = None
+
+        with (
+            patch("hikvision_doorbell.workers.doorbell.Client", return_value=mock_cm),
+            patch.object(doorbell, "publish_discovery", AsyncMock()) as mock_disc,
+        ):
+            await doorbell.handle_birth_message(stop)
+        mock_mqtt.subscribe.assert_awaited_with("homeassistant/status")
+        assert mock_disc.await_count == 1
 
 
 class TestDoorbellPublishIfChangedError:

@@ -1,7 +1,6 @@
 import json
 import xml.etree.ElementTree as ET
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -52,28 +51,28 @@ class DoorInfo(Enum):
 class DeviceInfo(BaseModel):
     device_name: str = Field(alias="deviceName")
     device_id: str = Field(alias="deviceID")
-    device_description: Optional[str] = Field(alias="deviceDescription", default=None)
-    device_location: Optional[str] = Field(alias="deviceLocation", default=None)
-    system_contact: Optional[str] = Field(alias="systemContact", default=None)
-    model: Optional[str] = Field(alias="model", default=None)
-    serial_number: Optional[str] = Field(alias="serialNumber", default=None)
-    mac_address: Optional[str] = Field(alias="macAddress", default=None)
-    firmware_version: Optional[str] = Field(alias="firmwareVersion", default=None)
-    firmware_released_date: Optional[str] = Field(alias="firmwareReleasedDate", default=None)
-    boot_version: Optional[str] = Field(alias="bootVersion", default=None)
-    boot_released_date: Optional[str] = Field(alias="bootReleasedDate", default=None)
-    hardware_version: Optional[str] = Field(alias="hardwareVersion", default=None)
-    encoder_version: Optional[str] = Field(alias="encoderVersion", default=None)
-    encoder_released_date: Optional[str] = Field(alias="encoderReleasedDate", default=None)
-    device_type: Optional[str] = Field(alias="deviceType", default=None)
-    sub_device_type: Optional[str] = Field(alias="subDeviceType", default=None)
-    telecontrol_id: Optional[int] = Field(alias="telecontrolID", default=None)
-    support_beep: Optional[bool] = Field(alias="supportBeep", default=None)
-    support_video_loss: Optional[bool] = Field(alias="supportVideoLoss", default=None)
-    alarm_out_num: Optional[int] = Field(alias="alarmOutNum", default=None)
-    alarm_in_num: Optional[int] = Field(alias="alarmInNum", default=None)
-    rs485_num: Optional[int] = Field(alias="RS485Num", default=None)
-    customized_info: Optional[str] = Field(alias="customizedInfo", default=None)
+    device_description: str | None = Field(alias="deviceDescription", default=None)
+    device_location: str | None = Field(alias="deviceLocation", default=None)
+    system_contact: str | None = Field(alias="systemContact", default=None)
+    model: str | None = Field(alias="model", default=None)
+    serial_number: str | None = Field(alias="serialNumber", default=None)
+    mac_address: str | None = Field(alias="macAddress", default=None)
+    firmware_version: str | None = Field(alias="firmwareVersion", default=None)
+    firmware_released_date: str | None = Field(alias="firmwareReleasedDate", default=None)
+    boot_version: str | None = Field(alias="bootVersion", default=None)
+    boot_released_date: str | None = Field(alias="bootReleasedDate", default=None)
+    hardware_version: str | None = Field(alias="hardwareVersion", default=None)
+    encoder_version: str | None = Field(alias="encoderVersion", default=None)
+    encoder_released_date: str | None = Field(alias="encoderReleasedDate", default=None)
+    device_type: str | None = Field(alias="deviceType", default=None)
+    sub_device_type: str | None = Field(alias="subDeviceType", default=None)
+    telecontrol_id: int | None = Field(alias="telecontrolID", default=None)
+    support_beep: bool | None = Field(alias="supportBeep", default=None)
+    support_video_loss: bool | None = Field(alias="supportVideoLoss", default=None)
+    alarm_out_num: int | None = Field(alias="alarmOutNum", default=None)
+    alarm_in_num: int | None = Field(alias="alarmInNum", default=None)
+    rs485_num: int | None = Field(alias="RS485Num", default=None)
+    customized_info: str | None = Field(alias="customizedInfo", default=None)
 
     @classmethod
     def from_xml(cls, xml_str: str) -> "DeviceInfo":
