@@ -2,11 +2,13 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import json
+
 import pytest
 
 from hikvision_doorbell.models.hikvision import CallInfo, DeviceInfo, DoorInfo
 from hikvision_doorbell.models.mqtt import MqttMessageAvailabilityPayload
-from hikvision_doorbell.workers.doorbell import Doorbell
+from hikvision_doorbell.workers.doorbell import RING_EVENT_TYPES, Doorbell
 from tests.conftest import SAMPLE_DEVICE_INFO_XML
 
 
@@ -406,9 +408,14 @@ class TestDoorbellHandleCallStatuses:
                 await t
             except __import__("asyncio").CancelledError:
                 pass
-            calls = [str(c) for c in mock_pub.call_args_list]
-            assert any("pressed" in c for c in calls)
-            assert any("released" in c for c in calls)
+            ring_topic = doorbell._ring_discovery.state_topic
+            ring_payloads = [c.args[1] for c in mock_pub.call_args_list if c.args[0] == ring_topic]
+            assert ring_payloads, "nothing published on the ring state topic"
+            decoded = [json.loads(p) for p in ring_payloads]
+            assert all(set(d) == {"event_type"} for d in decoded)
+            assert all(d["event_type"] in RING_EVENT_TYPES for d in decoded)
+            assert {d["event_type"] for d in decoded} >= {"pressed", "released"}
+            assert "unknown" not in ring_payloads
 
     @pytest.mark.asyncio
     async def test_handle_call_statuses_waits_for_client(self, doorbell):
