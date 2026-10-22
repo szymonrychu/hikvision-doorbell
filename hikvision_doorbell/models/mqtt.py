@@ -1,6 +1,5 @@
 import logging
 from enum import Enum
-from typing import List
 
 from aiomqtt import Client
 from pydantic import BaseModel, model_validator
@@ -44,7 +43,7 @@ class MqttDiscoveryAvailability(BaseModel):
 
 
 class MqttDiscoveryDevice(BaseModel):
-    identifiers: List[str]
+    identifiers: list[str]
     manufacturer: str
     model: str
     name: str
@@ -148,7 +147,7 @@ class MqttEventDiscoveryPlatform(Enum):
 
 class MqttEventDiscovery(MqttDiscovery):
     type: MqttDiscoveryType
-    event_types: List[str] | None = None
+    event_types: list[str] | None = None
     platform: MqttEventDiscoveryPlatform = MqttEventDiscoveryPlatform.event
     value_template: str | None = None
 

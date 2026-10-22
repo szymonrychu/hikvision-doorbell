@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, cast
+from typing import Any, cast
 
 import httpx
 from aiomqtt import Client, ProtocolVersion
@@ -75,9 +75,9 @@ class Doorbell:
             self._lock_discovery,
             self._ring_discovery,
         ]
-        self.state_cache: Dict[str, Any] = {}
+        self.state_cache: dict[str, Any] = {}
 
-    def tasks(self, stop_event: asyncio.Event) -> List[asyncio.Task]:
+    def tasks(self, stop_event: asyncio.Event) -> list[asyncio.Task]:
         tasks = []
         for t in [
             self.handle_lock_command(stop_event),
@@ -92,7 +92,7 @@ class Doorbell:
     async def publish_if_changed(self, topic: str, value: str, retain=True):
         if self.state_cache.get(topic) == value:
             return
-        logger.info(f"publishing event on topic: '{topic}', value: '{str(value)}'")
+        logger.info(f"publishing event on topic: '{topic}', value: '{value!s}'")
         self.state_cache[topic] = value
         try:
             async with Client(
@@ -113,7 +113,7 @@ class Doorbell:
             return None
         return json.dumps({"event_type": event_type})
 
-    def ring_event_payloads(self) -> List[str]:
+    def ring_event_payloads(self) -> list[str]:
         return [cast(str, self.ring_event_payload(t)) for t in RING_EVENT_TYPES]
 
     async def publish_ring_event(self, event_type: str | None):
@@ -225,8 +225,7 @@ class Doorbell:
         return self._device_healthy
 
     def _url(self, path: str) -> str:
-        if path.startswith("/"):
-            path = path[1:]
+        path = path.removeprefix("/")
         return f"{self._base_url}/{path}"
 
     @retry_async_yield(
@@ -245,7 +244,7 @@ class Doorbell:
             logger.warning("Failed to parse device info XML: %s", e)
             return None
 
-    def _parse_call_status(self, data: Dict[str, Any]) -> CallInfo | None:
+    def _parse_call_status(self, data: dict[str, Any]) -> CallInfo | None:
         """Safely parse call status from JSON; returns None for unknown/missing values."""
         status = (data.get("CallStatus") or {}).get("status")
         if status is None:

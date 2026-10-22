@@ -2,8 +2,9 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
+from collections.abc import AsyncGenerator, Callable
 from functools import wraps
-from typing import Any, AsyncGenerator, Callable, Tuple, Type
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class PerMessageRateLimitFilter(logging.Filter):
 def retry_async_yield(
     attempts: int = 3,
     delay: float = 0.0,
-    exceptions: Tuple[Type[BaseException], ...] = (Exception,),
+    exceptions: tuple[type[BaseException], ...] = (Exception,),
 ):
     """
     Decorator that turns an async function into an async generator.
@@ -77,7 +78,7 @@ def retry_async_yield(
 def while_async_task_done(
     stop_event: asyncio.Event,
     delay: float = 0.0,
-    exceptions: Tuple[Type[BaseException], ...] = (Exception,),
+    exceptions: tuple[type[BaseException], ...] = (Exception,),
 ):
     def decorator(func: Callable[..., Any]):
         @wraps(func)

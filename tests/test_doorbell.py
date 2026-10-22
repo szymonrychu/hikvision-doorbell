@@ -1,8 +1,7 @@
 """Tests for hikvision_doorbell.workers.doorbell."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 

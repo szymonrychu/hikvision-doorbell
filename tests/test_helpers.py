@@ -107,7 +107,7 @@ class TestRetryAsyncYield:
             nonlocal calls
             calls += 1
             if calls < 2:
-                return None
+                return
             raise ValueError("final")
 
         results = []
