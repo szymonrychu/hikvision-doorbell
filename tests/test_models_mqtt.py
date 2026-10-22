@@ -84,8 +84,6 @@ def _base(**over):
 
 
 def _make(type_, **over):
-    from pydantic import TypeAdapter  # noqa: F401
-
     from hikvision_doorbell.models import mqtt as m
 
     cls = {"lock": m.MqttLockDiscovery, "event": m.MqttButtonDiscovery}.get(type_, m.MqttDiscovery)
