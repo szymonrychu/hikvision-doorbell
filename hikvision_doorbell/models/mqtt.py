@@ -3,7 +3,7 @@ from enum import Enum
 from typing import List
 
 from aiomqtt import Client
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,26 @@ class MqttDiscoveryDevice(BaseModel):
     name: str
 
 
+# Device classes Home Assistant accepts per MQTT platform.
+VALID_DEVICE_CLASSES = {
+    "button": {"identify", "restart", "update"},
+    "event": {"button", "doorbell", "motion"},
+    "lock": set(),
+    "sensor": set(),
+    "binary_sensor": {"motion", "occupancy", "lock"},
+}
+
+# Retained discovery topics ("{prefix}" is the discovery prefix) that earlier versions published with
+# schemas Home Assistant rejects and that this publisher no longer uses. Broker-side clean-up
+# (ha-admin-ops-list) reads them from here.
+LEGACY_DISCOVERY_TOPICS = (
+    "{prefix}/event/doorbell_state_lock/config",
+    "{prefix}/lock/doorbell_state_sensor/config",
+    "{prefix}/binary_sensor/hik_192_168_1_55_button/config",
+    "{prefix}/button/doorbell_state_sensor/config",
+)
+
+
 class MqttDiscovery(BaseModel):
     availability: MqttDiscoveryAvailability | None
     command_topic: str | None = None
@@ -61,7 +81,22 @@ class MqttDiscovery(BaseModel):
     enabled_by_default: bool = True
     device_class: MqttDiscoveryDeviceClass | None
 
+    @model_validator(mode="after")
+    def _validate_schema(self):
+        component = self.type.value
+        if component == "lock" and not self.command_topic:
+            raise ValueError("lock discovery requires command_topic")
+        if component == "event":
+            if not self.state_topic:
+                raise ValueError("event discovery requires state_topic")
+            if not getattr(self, "event_types", None):
+                raise ValueError("event discovery requires non-empty event_types")
+        if self.device_class is not None and self.device_class.value not in VALID_DEVICE_CLASSES[component]:
+            raise ValueError(f"device_class '{self.device_class.value}' is invalid for {component}")
+        return self
+
     async def publish_discovery(self, mqtt: Client, discovery_prefix: str):
+        # the topic component comes from the same field that selects the schema
         discovery_topic = "/".join([discovery_prefix, self.type.value, self.unique_id, "config"])
         model = self.model_dump_json(
             exclude_none=True,
