@@ -67,3 +67,63 @@ def test_legacy_topics():
             "{prefix}/button/doorbell_state_sensor/config",
         ]
     )
+
+
+def _base(**over):
+    from hikvision_doorbell.models.mqtt import MqttDiscoveryDevice
+
+    base = dict(
+        availability=None,
+        name="n",
+        unique_id="u",
+        device=MqttDiscoveryDevice(identifiers=["i"], manufacturer="m", model="x", name="d"),
+        device_class=None,
+    )
+    base.update(over)
+    return base
+
+
+def _make(type_, **over):
+    from pydantic import TypeAdapter  # noqa: F401
+
+    from hikvision_doorbell.models import mqtt as m
+
+    cls = {"lock": m.MqttLockDiscovery, "event": m.MqttButtonDiscovery}.get(type_, m.MqttDiscovery)
+    return cls(**_base(type=m.MqttDiscoveryType(type_), **over))
+
+
+def test_validator_rejects_lock_without_command_topic():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="command_topic"):
+        _make("lock", state_topic="s")
+    _make("lock", command_topic="c")
+
+
+def test_validator_rejects_event_without_state_topic_or_event_types():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="state_topic"):
+        _make("event", event_types=["ring"])
+    with pytest.raises(ValidationError, match="event_types"):
+        _make("event", state_topic="s", event_types=[])
+    _make("event", state_topic="s", event_types=["ring"])
+
+
+@pytest.mark.parametrize(
+    "type_,cls_name",
+    [("binary_sensor", "doorbell"), ("button", "occupancy"), ("lock", "lock"), ("event", "occupancy")],
+)
+def test_validator_rejects_invalid_device_class(type_, cls_name):
+    from pydantic import ValidationError
+
+    from hikvision_doorbell.models.mqtt import MqttDiscoveryDeviceClass
+
+    with pytest.raises(ValidationError, match="invalid for"):
+        _make(
+            type_,
+            device_class=MqttDiscoveryDeviceClass(cls_name),
+            command_topic="c",
+            state_topic="s",
+            event_types=["ring"],
+        )
