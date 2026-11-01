@@ -25,7 +25,7 @@ aiomqtt = "^2.4.0"
 pytest = "^9.0.0"
 pytest-asyncio = "^1.0.0"
 pytest-cov = "^7.0.0"
-ruff = "^0.15.0"
+ruff = "^0.17.3"
 autoflake = "^2.3.1"
 coverage-badge = "^1.1.1"
 isort = "^8.0.0"
@@ -68,6 +68,10 @@ profile = 'black'
 line-length = 120
 target-version = 'py311'
 fix = true
+
+[tool.ruff.lint]
+# ruff 0.16 widened the default rule set; keep the pre-0.16 default
+select = ["E4", "E7", "E9", "F"]
 
 [tool.flake8]
 max-line-length = 120
