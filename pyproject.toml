@@ -45,6 +45,7 @@ sync = 'uv pip install --upgrade -r <(poetry export --dev)'
 [tool.pytest.ini_options]
 addopts = "-v -rxXs"
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = [
     "tests",
 ]
